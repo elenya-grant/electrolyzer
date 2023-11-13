@@ -104,7 +104,7 @@ def ael_electrolyzer_model(X, a, b, c, d, e, f):
     fit (see `Stack.create_polarization`).
     """
     P, T = X
-    I = a * (P**2) + b * T**2 + c * P * T + d * P + e * T + f
+    I = a * (P**3) + b * (P**2) + c * P + d * (P ** (1 / 2)) + e + f * T
 
     return I
 
@@ -122,7 +122,7 @@ class AlkalineCell(FromDictMixin):
     # Stack parameters #
     ####################
     pressure_operating: float  # [bar]
-    n_cells: int  # number of cells
+    # n_cells: int  # number of cells
 
     # Electrode parameters #
     ####################
@@ -366,10 +366,13 @@ class AlkalineCell(FromDictMixin):
         alpha_c = 0.1175 + 0.00095 * T_cathode
 
         # Table 1
-        delta_Ga = 41500  # [J/mol*K]
-        delta_Gc = 23450  # [J/mol*K]
+        delta_Ga = 41500  # [J/mol*K] Free energy of Activation anode
+        delta_Gc = 23450  # [J/mol*K] Free energy of Activation cathode
+        # reference exchange current density anode
         jref_0a = 1.34535 * 10 ** (-5)  # [A/cm^2]
+        # reference exchange current density anode
         jref_0c = 1.8456 * 10 ** (-3)  # [A/cm^2]
+        # Reference temperature
         Tref = convert_temperature([25], "C", "K")[0]
         gamma_a = 1.25  # anode roughness factor
         gamma_c = 1.05  # cathode roughness factor
@@ -389,6 +392,7 @@ class AlkalineCell(FromDictMixin):
         ba = (R * T_anode) / (self.z * F * alpha_a)
         # Eqn 13 - Tafel slope for cathode
         bc = (R * T_anode) / (self.z * F * alpha_c)
+        # TODO: fix if current density is zero
         # Eqn 11 - anode activation energy
         V_act_a = ba * np.log(ja / j0a)
         # Eqn 12 - cathode activation energy
@@ -582,7 +586,7 @@ class AlkalineCell(FromDictMixin):
         # E_rev_fake = 1.229
         return E_rev0
 
-    def calc_faradaic_efficiency(self, T_C, I):
+    def calc_faradaic_efficiency(self, I):
         """
         I [A]: current
         T_C [C]: temperature
@@ -592,7 +596,7 @@ class AlkalineCell(FromDictMixin):
         # f1 and f2 values from Table 3
         f1 = 250  # [mA^2/cm^4]
         f2 = 0.96  # [-]
-        j = self.calc_current_density(T_C, I)  # [A/cm^2]
+        j = self.calc_current_density(I)  # [A/cm^2]
         j *= 1000  # [mA/cm^2]
 
         # TODO: make coefficients based on temperature
@@ -606,21 +610,21 @@ class AlkalineCell(FromDictMixin):
         eta_F = f2 * (j**2) / (f1 + j**2)
         return eta_F
 
-    def calc_mass_flow_rate(self, T_C, I):
+    def calc_mass_flow_rate(self, I):
         """
         I [A]: current
         T_C [C]: temperature
-        return :: mfr [kg/s]: mass flow rate of H2
+        return :: mfr [kg/s]: mass flow rate of H2 per cell
         Reference: [Oystein Ulleberg, 2003]: Eqn 10
         """
 
-        eta_F = self.calc_faradaic_efficiency(T_C, I)
+        eta_F = self.calc_faradaic_efficiency(I)
         # Eqn 10 [mol/sec]
-        h2_prod_mol = eta_F * self.n_cells * I / (self.z * F)
+        h2_prod_mol = eta_F * I / (self.z * F)
         # n_cells is number of cells in series
         mfr = self.M_H * self.z * h2_prod_mol  # [g/sec]
         # z is valency number of electrons transferred per ion
         # for oxygen, z=4
         mfr = mfr / 1e3  # [kg/sec]
-        return mfr
+        return mfr  # per cell
         # h2_prod is in mol/s

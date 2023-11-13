@@ -398,11 +398,19 @@ class AlkalineStack(FromDictMixin):
             # record turn off time to adjust waiting period
             self.turn_off_time = self.time
             self.stack_on = False
-            self.stack_waiting = False
-            self.cycle_count += 1
+            self.stack_warming_up = False
+            self.stack_cooling_down = True
+            self.cycle_count += 1  # NOTE: change this
             # self.stack_state = 0
-
+            turned_off_duration = (
+                self.time - self.turn_off_time
+            )  # DONT PUT THESE IN HERE
             # adjust waiting period
+            # turn_off_time = last time turned off
+            # turn_on_time = last time it was turned on
+            # if turn_off_time - turn_on_time < 600 sec then self.wait_time
+            #
+
             self.wait_time = np.max(
                 [0, self.wait_time - (self.turn_off_time - self.turn_on_time)]
             )

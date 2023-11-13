@@ -22,4 +22,5 @@ variation_value = turbine_rating - base_value
 power_test_signal = (base_value + variation_value * np.cos(test_signal_angle)) * 1e6
 
 res = run_electrolyzer(fname_input_modeling, power_test_signal)
+[]
 # print(res)

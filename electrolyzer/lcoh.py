@@ -198,7 +198,7 @@ class LCOH(FromDictMixin):
         # over its rated power consumption, would probably be better
         # to use ratio of h2 produced to rated h2 production but
         # rated h2 production isn't an accessible parameter
-        #
+
         power_consumed_kW = (self.dt / 3600) * np.sum(
             self.power_kW_avail - self.power_kW_curtailed
         )
@@ -233,6 +233,7 @@ class LCOH(FromDictMixin):
         d_eol = self.stack_replacement["d_eol"]
         # time until death (below) [hrs]
         t_eod = (d_eol / self.deg_state) * self.sim_length_hrs
+
         return t_eod
 
     def calc_stack_replacement_schedule(self):
@@ -384,3 +385,36 @@ class LCOH(FromDictMixin):
         self.LCOH_summary["LCOH [$/kg-H2]"] = lcoh
 
         return lcoh
+
+    def run_simple_ptc(
+        self,
+        wind_ptc,
+        h2_ptc,
+        annual_power_consumed,
+    ):
+        """ """
+        ptc_duration = 10  # years
+        # '''
+        # ITC:
+        #     -reduces federal incme tax liability for a percentage of the cost of a renewable system that is installed during the tax year
+        #     -percent
+        # PTC:
+        #     -per kWh tax credit for electricty generation. Reduces federal income tax liability and is adjusted for inflation
+        #     -$/kWh
+        # '''
+
+        # wind_itc = 0
+        # wind_ptc = 0.03072
+        # h2_ptc = 3 #$/kg-H2, depends on total_EI_policy?
+        # storage_itc = 0.5 #hydrogen storage
+        # Ren_PTC = 0.03072 * ren_electricity_useage_kWhpkg
+        # hydrogen_ptc = ren_frac*h2_ptc_offgrid + (1-ren_frac)*h2_ptc_grid
+        # pf.set_params('one time cap inct',{'value':ITC*capex_battery_installed,'depr type':'MACRS','depr period':7,'depreciable':True})
+        # H2 PTC is $/kg-H2
+        # REN PTC is $/kWh
+        # pf.set_params('one time cap inct'
+        # ITC: one time capital incentive
+        # pf.set_params('one time cap inct',{'value':ITC*capex_battery_installed,'depr type':'MACRS','depr period':7,'depreciable':True})
+        # ITC*capex_of_installed_renewable_energy
+        # H2_PTC_duration = 10
+        # pf.add_incentive(name = 'Hydrogen PTC credit',value = H2_PTC,decay = 0,sunset_years = H2_PTC_duration,tax_credit = True)
