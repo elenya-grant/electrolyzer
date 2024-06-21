@@ -36,6 +36,7 @@ class Stack(FromDictMixin):
     # If degradation results in hydrogen losses, hydrogen_degradation_penalty = True
     # If degradation results in more power consumed, hydrogen_degradation_penalty = False
     hydrogen_degradation_penalty: bool = field(default=True) 
+    eol_eff_percent_loss: float = field(init=False)
     d_eol: float = field(init=False)
 
     max_current: float = field(default=1000)  # TODO this is a bad default, fix later
@@ -140,7 +141,7 @@ class Stack(FromDictMixin):
     def __attrs_post_init__(self) -> None:
         # Stack parameters #
         ####################
-
+        self.eol_eff_percent_loss = self.degradation["eol_eff_percent_loss"]
         if self.cell_type == "PEM":
             # initialize electrolzyer cell model
             self.cell = PEMCell.from_dict(self.cell_params["PEM_params"])
@@ -207,6 +208,7 @@ class Stack(FromDictMixin):
         # self.h2_pres_out = 31  # H2 outlet pressure (bar)
 
         self.DTSS = self.calc_state_space()
+        self.d_eol = self.calc_end_of_life_voltage()
     
     def run_power_deg_penalty(self,P_in):
         """
@@ -517,11 +519,11 @@ class Stack(FromDictMixin):
 
         return (eta_kWh_per_kg, eta_hhv_percent, eta_lhv_percent)
 
-    def calc_end_of_life_voltage(self,eol_eff_percent_loss):
+    def calc_end_of_life_voltage(self):
         """
         eol_eff_percent_loss [%]: efficiency drop that indicates end-of-life (between 1 and 100)
         """
-        eol_eff_mult = (100+eol_eff_percent_loss)/100
+        eol_eff_mult = (100+self.eol_eff_percent_loss)/100
         V_cell_bol = self.cell.calc_cell_voltage(self.max_current, self.temperature)
         H2_mfr_bol = self.cell.calc_mass_flow_rate(self.temperature, self.max_current) * self.n_cells
 
@@ -530,8 +532,8 @@ class Stack(FromDictMixin):
         n_f = self.cell.calc_faradaic_efficiency(self.temperature, i_eol_no_faradaic_loss)
         i_eol = (H2_mfr_eol*1e3*self.cell.n*F)/(n_f*self.n_cells*self.cell.M*self.dt)
 
-        self.d_eol=((self.max_current*V_cell_bol)/i_eol) - V_cell_bol 
-        # return d_eol
+        d_eol=((self.max_current*V_cell_bol)/i_eol) - V_cell_bol 
+        return d_eol
     
     def estimate_time_until_replacement(self):
         

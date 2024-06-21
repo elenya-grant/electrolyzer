@@ -139,6 +139,7 @@ properties:
             degradation:
                 type: object
                 default:
+                    eol_eff_percent_loss: 10
                     PEM_params:
                         rate_steady: 1.41737929e-10
                         rate_fatigue: 3.33330244e-07
@@ -149,6 +150,12 @@ properties:
                         rate_onoff: 3.0726072607260716e-04
                 description: Degradation rates for PEM or alkaline electrolyzer
                 properties:
+                    eol_eff_percent_loss:
+                        type: number
+                        description: End of life efficiency drop
+                        minimum: 5
+                        default: 10
+                        maximum: 100
                     PEM_params:
                         type: object
                         default:
