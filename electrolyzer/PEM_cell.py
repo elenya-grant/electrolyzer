@@ -57,7 +57,7 @@ class PEMCell(FromDictMixin):
     # as configuration params
 
     # number of electrons transferred in reaction
-    n: int = 2
+    n: int = 2  # TODO: change to z_c
 
     gibbs: float = 237.24e3  # Gibbs Energy of global reaction (J/mol)
     M: float = 2.016  # molecular weight [g/mol]
@@ -97,8 +97,11 @@ class PEMCell(FromDictMixin):
         #     np.log((p_h2 / p_h2O_sat) * np.sqrt(p_o2 / p_h2O_sat))
         # )
         E_cell = E_rev_0 + ((R * T_K) / (self.n * F)) * (
-            np.log((p_h2 / P_ATMO) * np.sqrt(p_o2 / P_ATMO))
+            np.log((p_h2 * np.sqrt(p_o2)) / p_h2O_sat)
         )
+        # E_cell = E_rev_0 + ((R * T_K) / (self.n * F)) * (
+        #     np.log((p_h2 / P_ATMO) * np.sqrt(p_o2 / P_ATMO))
+        # )
 
         return E_cell
 

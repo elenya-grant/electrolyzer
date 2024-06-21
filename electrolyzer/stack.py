@@ -255,46 +255,6 @@ class Stack(FromDictMixin):
 
         return H2_mfr, H2_mass_out, power_left
 
-    # ------------------------------------------------------------
-    # Polarization model
-    # ------------------------------------------------------------
-    def create_polarization(self):
-        interval = 10.0
-        currents = np.arange(0, self.max_current + interval, interval)
-        pieces = []
-        prev_temp = self.temperature
-        for temp in np.arange(40, 60 + 5, 5):
-            # for temp in np.arange(self.temperature - 5, self.temperature + 10, 5):
-            self.temperature = temp
-            powers = self.calc_stack_power(currents)
-            tmp = pd.DataFrame({"current_A": currents, "power_kW": powers})
-            tmp["temp_C"] = temp
-            pieces.append(tmp)
-        self.temperature = prev_temp
-        df = pd.concat(pieces)
-
-        # assign initial values and solve a model
-        paramsinitial = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0)
-
-        # use curve_fit routine
-        fitobj, fitcov = scipy.optimize.curve_fit(
-            self.electrolyzer_model,
-            (df.power_kW.values, df.temp_C.values),
-            df.current_A.values,
-            p0=paramsinitial,
-        )
-
-        return fitobj
-
-    def convert_power_to_current(self, Pdc, T):
-        """
-        Pdc [kW]: stack power
-        T [degC]: stack temperature
-        return :: Idc [A]: stack current
-        """
-        Idc = self.electrolyzer_model((Pdc, T), *self.fit_params)
-        return Idc
-
     def curtail_power(self, P_in):
         """
         P_in [kWdc]: input power

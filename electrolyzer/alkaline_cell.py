@@ -163,7 +163,7 @@ class AlkalineCell(FromDictMixin):
     # AND EQUATIONS FROM [Gambou, Guilbert,et al 2022]
 
     # num hydrogen molecules transferred per reaction
-    z: int = 2
+    z: int = 2  # TODO: change to z_c
 
     M_H: float = 1.00784  # molecular weight of Hydrogen [g/mol]
     M_0: float = 15.999  # molecular weight of Oxygen [g/mol]
