@@ -85,6 +85,9 @@ class Stack(FromDictMixin):
     degradation_history: NDArrayFloat = field(
         init=False, default=[], converter=array_converter
     )
+    power_input_history: NDArrayFloat = field(
+        init=False, default=[], converter=array_converter
+    )
 
     # [V] degradation from fluctuating power only
     d_f: float = field(init=False, default=0)
@@ -228,8 +231,8 @@ class Stack(FromDictMixin):
         
         I_nom = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
         V_cell = self.cell.calc_cell_voltage(I_nom, self.temperature)
-        eff_mult = (V_cell + self.V_degradation)/V_cell #1 + efficiency drop
-        I_stack = I_nom/eff_mult
+        eff_mult = np.nan_to_num((V_cell + self.V_degradation)/V_cell) #1 + efficiency drop
+        I_stack = np.nan_to_num(I_nom/eff_mult)
         
         return I_stack, V_cell
 
@@ -292,6 +295,7 @@ class Stack(FromDictMixin):
         self.cell_voltage = V_cell
         self.voltage_history = np.append(self.voltage_history, [V_cell])
         self.degradation_history = np.append(self.degradation_history,[self.V_degradation])
+        self.power_input_history = np.append(self.power_input_history,[P_in])
         # check if it is an hour to decide whether to calculate fatigue
         hourly_temp = self.hourly_counter
         self.time += self.dt
@@ -548,7 +552,7 @@ class Stack(FromDictMixin):
         stack_life = (1/frac_of_life_used)*(self.uptime/3600) #[hrs]
         return stack_life
 
-    def estimate_life_performance_from_year(self,P_in,plant_life_years:int):
+    def estimate_life_performance_from_year(self,plant_life_years:int):
         refturb_schedule = np.zeros(plant_life_years)
         ahp_kg = np.zeros(plant_life_years)
         aep_kWh = np.zeros(plant_life_years)
@@ -565,14 +569,14 @@ class Stack(FromDictMixin):
                 V_deg_pr_sim = np.concatenate([V_deg_pr_sim[0:idx_dead],V_deg[idx_dead:sim_length]])
                 refturb_schedule[i] = 1
             if self.hydrogen_degradation_penalty:
-                I_nom = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
+                I_nom = self.electrolyzer_model((self.power_input_history / 1e3, self.temperature), *self.fit_params)
                 V_cell = self.cell.calc_cell_voltage(I_nom, self.temperature)
                 eff_mult = (V_cell + self.V_degradation)/V_cell #1 + efficiency drop
                 I_stack = I_nom/eff_mult
                 
                 
             else:
-                I_stack = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
+                I_stack = self.electrolyzer_model((self.power_input_history / 1e3, self.temperature), *self.fit_params)
                 V_cell = self.cell.calc_cell_voltage(I_stack, self.temperature)
                 
             
