@@ -131,6 +131,10 @@ properties:
                         type: boolean
                         default: True
                         description: Toggle whether degradation is applied to the Stack operation
+                    hydrogen_degradation_penalty:
+                        type: boolean
+                        default: True
+                        description: Toggle whether degradation is applied to hydrogen or power
 
             degradation:
                 type: object

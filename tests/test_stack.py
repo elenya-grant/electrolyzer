@@ -70,6 +70,7 @@ def test_init(mocker):
                 "max_current_density": 2,
             },
         },
+        "hydrogen_degradation_penalty": False,
     }
 
     stack = Stack.from_dict(stack_dict)
@@ -85,6 +86,7 @@ def test_init(mocker):
     assert stack.min_power == 0.1 * stack.stack_rating
 
     assert stack.include_degradation_penalty is True
+    assert stack.hydrogen_degradation_penalty == stack_dict["hydrogen_degradation_penalty"]
     assert stack.rf_track == 0.0
     assert stack.V_degradation == 0.0
     assert stack.uptime == 0.0

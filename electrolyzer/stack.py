@@ -28,6 +28,9 @@ class Stack(FromDictMixin):
 
     stack_rating_kW: float = field(default=None)
     include_degradation_penalty: bool = field(default=True)
+    # If degradation results in hydrogen losses, hydrogen_degradation_penalty = True
+    # If degradation results in more power consumed, hydrogen_degradation_penalty = False
+    hydrogen_degradation_penalty: bool = field(default=True) 
     max_current: float = field(default=1000)  # TODO this is a bad default, fix later
 
     min_power: float = field(default=None)
@@ -194,31 +197,66 @@ class Stack(FromDictMixin):
         # self.h2_pres_out = 31  # H2 outlet pressure (bar)
 
         self.DTSS = self.calc_state_space()
-
-    def run(self, P_in):
+    
+    def run_power_deg_penalty(self,P_in):
         """
+        P_in [Wdc]: stack power input
+        """
+
+        I_stack = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
+        V_cell = self.cell.calc_cell_voltage(I, self.temperature)
+
+        return I_stack, V_cell
+
+    def run_h2_deg_penalty(self,P_in):
+        """
+        P_in [Wdc]: stack power input
+        """
+
+        
+        I_nom = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
+        V_cell = self.cell.calc_cell_voltage(I_nom, self.temperature)
+        eff_mult = (V_cell + self.V_degradation)/V_cell #1 + efficiency drop
+        I_stack = I_nom/eff_mult
+        
+        return I_stack, V_cell
+        
+    def run(self,P_in):
+        self.update_status()
+        if self.hydrogen_degradation_penalty:
+            I_stack,V_cell = self.run_h2_deg_penalty(P_in)
+        else:
+            I_stack,V_cell = self.run_power_deg_penalty(P_in)
+
+        H2_mfr, H2_mass_out, power_left = self.run_stack(I_stack,V_cell,P_in)
+        return H2_mfr, H2_mass_out, power_left
+    
+    def run_stack(self, I_stack,V_cell,P_in):
+        """
+        I_stack [A]: stack current input
+        V_cell [V]: cell voltage
         P_in [Wdc]: stack power input
         return :: H2_mfr [kg/s]: hydrogen mass flow rate
         return :: H2_mass_out [kg]: hydrogen mass
         return :: power_left [W]: difference in P_in and power consumed
         """
-        self.update_status()
+        # self.update_status()
 
-        I = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
-        V = self.cell.calc_cell_voltage(I, self.temperature)
+        # I = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
+        # V = self.cell.calc_cell_voltage(I, self.temperature)
 
         if self.stack_on:
             power_left = P_in
 
-            self.I = I
+            self.I = I_stack
 
             if self.include_degradation_penalty:
-                V += self.V_degradation
+                V_cell += self.V_degradation
 
-            self.update_temperature(I, V)
+            self.update_temperature(I_stack, V_cell)
             self.update_degradation()
-            power_left -= self.calc_stack_power(I, V) * 1e3
-            H2_mfr = self.cell.calc_mass_flow_rate(self.temperature, I) * self.n_cells
+            power_left -= self.calc_stack_power(I_stack, V_cell) * 1e3
+            H2_mfr = self.cell.calc_mass_flow_rate(self.temperature, I_stack) * self.n_cells
             self.stack_state, H2_mfr = self.update_dynamics(H2_mfr, self.stack_state)
 
             H2_mass_out = H2_mfr * self.dt
@@ -231,15 +269,15 @@ class Stack(FromDictMixin):
 
             if self.stack_waiting:
                 self.uptime += self.dt
-                self.I = I
-                self.update_temperature(I, V)
+                self.I = I_stack
+                self.update_temperature(I_stack, V_cell)
                 self.update_degradation()
                 power_left = 0
             else:
                 power_left = P_in
-                V = 0
+                V_cell = 0
 
-        self.cell_voltage = V
+        self.cell_voltage = V_cell
         self.voltage_history = np.append(self.voltage_history, [V])
 
         # check if it is an hour to decide whether to calculate fatigue
