@@ -13,3 +13,4 @@ from .supervisor import Supervisor
 from .alkaline_cell import AlkalineCell, ael_electrolyzer_model
 from .glue_code.run_lcoh import run_lcoh
 from .glue_code.run_electrolyzer import run_electrolyzer
+from .glue_code.run_electrolyzer import run_LCA
