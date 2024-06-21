@@ -13,6 +13,11 @@ from electrolyzer.PEM_cell import PEMCell, PEM_electrolyzer_model
 from electrolyzer.type_dec import NDArrayFloat, FromDictMixin, array_converter
 from electrolyzer.alkaline_cell import AlkalineCell, ael_electrolyzer_model
 
+from scipy.constants import physical_constants
+
+# Constants #
+#############
+F, _, _ = physical_constants["Faraday constant"]  # Faraday's constant [C/mol]
 
 @define
 class Stack(FromDictMixin):
@@ -31,6 +36,8 @@ class Stack(FromDictMixin):
     # If degradation results in hydrogen losses, hydrogen_degradation_penalty = True
     # If degradation results in more power consumed, hydrogen_degradation_penalty = False
     hydrogen_degradation_penalty: bool = field(default=True) 
+    d_eol: float = field(init=False)
+
     max_current: float = field(default=1000)  # TODO this is a bad default, fix later
 
     min_power: float = field(default=None)
@@ -72,6 +79,9 @@ class Stack(FromDictMixin):
         init=False, default=[], converter=array_converter
     )
     voltage_history: NDArrayFloat = field(
+        init=False, default=[], converter=array_converter
+    )
+    degradation_history: NDArrayFloat = field(
         init=False, default=[], converter=array_converter
     )
 
@@ -204,7 +214,7 @@ class Stack(FromDictMixin):
         """
 
         I_stack = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
-        V_cell = self.cell.calc_cell_voltage(I, self.temperature)
+        V_cell = self.cell.calc_cell_voltage(I_stack, self.temperature)
 
         return I_stack, V_cell
 
@@ -220,7 +230,7 @@ class Stack(FromDictMixin):
         I_stack = I_nom/eff_mult
         
         return I_stack, V_cell
-        
+
     def run(self,P_in):
         self.update_status()
         if self.hydrogen_degradation_penalty:
@@ -278,8 +288,8 @@ class Stack(FromDictMixin):
                 V_cell = 0
 
         self.cell_voltage = V_cell
-        self.voltage_history = np.append(self.voltage_history, [V])
-
+        self.voltage_history = np.append(self.voltage_history, [V_cell])
+        self.degradation_history = np.append(self.degradation_history,[self.V_degradation])
         # check if it is an hour to decide whether to calculate fatigue
         hourly_temp = self.hourly_counter
         self.time += self.dt
@@ -506,3 +516,67 @@ class Stack(FromDictMixin):
         eta_lhv_percent = self.cell.lhv / eta_kWh_per_kg * 100.0
 
         return (eta_kWh_per_kg, eta_hhv_percent, eta_lhv_percent)
+
+    def calc_end_of_life_voltage(self,eol_eff_percent_loss):
+        """
+        eol_eff_percent_loss [%]: efficiency drop that indicates end-of-life (between 1 and 100)
+        """
+        eol_eff_mult = (100+eol_eff_percent_loss)/100
+        V_cell_bol = self.cell.calc_cell_voltage(self.max_current, self.temperature)
+        H2_mfr_bol = self.cell.calc_mass_flow_rate(self.temperature, self.max_current) * self.n_cells
+
+        H2_mfr_eol = H2_mfr_bol/eol_eff_mult
+        i_eol_no_faradaic_loss=(H2_mfr_eol*1e3*self.cell.n*F)/(1*self.n_cells*self.cell.M*self.dt)
+        n_f = self.cell.calc_faradaic_efficiency(self.temperature, i_eol_no_faradaic_loss)
+        i_eol = (H2_mfr_eol*1e3*self.cell.n*F)/(n_f*self.n_cells*self.cell.M*self.dt)
+
+        self.d_eol=((self.max_current*V_cell_bol)/i_eol) - V_cell_bol 
+        # return d_eol
+    
+    def estimate_time_until_replacement(self):
+        
+        frac_of_life_used = self.V_degradation/self.d_eol
+        #time between replacement [hrs] based on time its existed (whether on or off)
+        time_between_replacement = (1/frac_of_life_used)*(self.time/3600) #[hrs]
+        return time_between_replacement
+
+    def estimate_stack_life(self):
+        #stack life [hrs] based on time its been operational
+        frac_of_life_used = self.V_degradation/self.d_eol
+        stack_life = (1/frac_of_life_used)*(self.uptime/3600) #[hrs]
+        return stack_life
+
+    def estimate_life_performance_from_year(self,P_in,plant_life_years:int):
+        refturb_schedule = np.zeros(plant_life_years)
+        ahp_kg = np.zeros(plant_life_years)
+        aep_kWh = np.zeros(plant_life_years)
+        
+        V_deg = np.array(self.degradation_history)
+        V_cell_bol = np.array(self.voltage_history) - V_deg
+        sim_length = len(V_cell_bol)
+
+        Vdeg0 = 0
+        for i in range(plant_life_years):
+            V_deg_pr_sim = Vdeg0 + V_deg
+            if np.max(V_deg_pr_sim)>self.d_eol:
+                idx_dead = np.argwhere(V_deg_pr_sim>self.d_eol)[0][0]
+                V_deg_pr_sim = np.concatenate([V_deg_pr_sim[0:idx_dead],V_deg[idx_dead:sim_length]])
+                refturb_schedule[i] = 1
+            if self.hydrogen_degradation_penalty:
+                I_nom = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
+                V_cell = self.cell.calc_cell_voltage(I_nom, self.temperature)
+                eff_mult = (V_cell + self.V_degradation)/V_cell #1 + efficiency drop
+                I_stack = I_nom/eff_mult
+                
+                
+            else:
+                I_stack = self.electrolyzer_model((P_in / 1e3, self.temperature), *self.fit_params)
+                V_cell = self.cell.calc_cell_voltage(I_stack, self.temperature)
+                
+            
+            H2_mass_out = self.cell.calc_mass_flow_rate(self.temperature, I_stack) * self.n_cells * self.dt
+            power_usage_kW = self.calc_stack_power(I_stack, V_cell+V_deg_pr_sim)
+            ahp_kg[i] = np.sum(H2_mass_out)
+            aep_kWh[i] = np.sum(power_usage_kW)
+            Vdeg0 = V_deg_pr_sim[sim_length-1]
+        return refturb_schedule,ahp_kg,aep_kWh
